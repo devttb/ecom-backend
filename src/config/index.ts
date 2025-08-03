@@ -9,5 +9,5 @@ export const config = {
       EXPIRESIN: '48h',
     },
   },
-  SALT_ROUNDS: process.env.SALT_ROUNDS || '10',
+  SALT_ROUNDS: Number(process.env.SALT_ROUNDS) || 10,
 };
