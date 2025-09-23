@@ -1,44 +1,84 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '@src/libs/prisma/prisma';
+import {
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { PrismaService } from '@src/libs/prisma/prisma.service';
+import { UserRepository } from '@src/modules/user/user.repository';
+import { PasswordHelper } from '@src/common/utils/password-helper';
+import { AuthRegisterDto, AuthLoginDto } from '@src/modules/auth/dtos';
+import { CredentialRepository } from '@src/modules/credential/credential.repository';
+import { AuthLoginVo, AuthRegisterVo } from '@src/modules/auth/vo';
+import { config } from '@src/config';
 
 @Injectable()
 export class AuthService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly jwtService: JwtService,
+    private readonly crendentialRepo: CredentialRepository,
+    private readonly userRepo: UserRepository,
+  ) {}
 
-  async register(data: {
-    email: string;
-    password: string;
-    name: string;
-  }): Promise<any> {
-    const { email, password, name } = data;
-    const credential = await this.prisma.credential.create({
-      data: { email, password },
+  async register(registerDto: AuthRegisterDto): Promise<AuthRegisterVo> {
+    const { email, password, name } = registerDto;
+
+    return this.prismaService.$transaction(async (prisma) => {
+      const userExisted = await this.userRepo.findUnique(prisma, { email });
+
+      if (userExisted) throw new ConflictException('Email is already existed!');
+
+      const user = await this.userRepo.create(prisma, { email, name });
+      await this.crendentialRepo.create(prisma, {
+        email,
+        password,
+        userId: user.id,
+      });
+
+      const authRegisterVo = new AuthRegisterVo('Success');
+      return authRegisterVo;
     });
-
-    const user = await this.prisma.user.create({ data: { email, name } });
-
-    if (!credential || !user) {
-      throw new NotFoundException(`User not found!`);
-    }
-    return { credential, user };
   }
 
-  async login(
-    email: string,
-    password: string,
-  ): Promise<{ accessToken: string }> {
-    const user = await this.prisma.credential.findFirst({
-      where: { email, password },
+  async login(loginDto: AuthLoginDto): Promise<AuthLoginVo> {
+    const { email, password } = loginDto;
+    return this.prismaService.$transaction(async (prisma) => {
+      // check user
+      const credential = await this.crendentialRepo.findUnique(prisma, {
+        email,
+      });
+      if (!credential)
+        throw new UnauthorizedException('Email or password incorrect!');
+
+      // validate password
+      const { password: credenitalPassword, ...payload } = credential;
+      const passwordValid = await PasswordHelper.compare(
+        password,
+        credenitalPassword,
+      );
+      if (!passwordValid)
+        throw new UnauthorizedException('Email or password incorrect!');
+
+      const accessToken = this.generateAccessToken(payload);
+      const refreshToken = this.generateRefreshToken(payload);
+      const authLoginVo = new AuthLoginVo(accessToken, refreshToken);
+
+      return authLoginVo;
     });
+  }
 
-    if (!user) {
-      throw new NotFoundException(`User not found!`);
-    }
+  generateAccessToken(payload: Buffer | object): string {
+    return this.jwtService.sign(payload, {
+      secret: config.JWT.ACCESS.SECRETKEY,
+      expiresIn: config.JWT.ACCESS.EXPIRESIN,
+    });
+  }
 
-    if (password !== user.password) {
-      throw new NotFoundException(`email or password is wrong`);
-    }
-
-    return { accessToken: '' };
+  generateRefreshToken(payload: Buffer | object): string {
+    return this.jwtService.sign(payload, {
+      secret: config.JWT.REFESH.SECRETKEY,
+      expiresIn: config.JWT.REFESH.EXPIRESIN,
+    });
   }
 }

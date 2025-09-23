@@ -1,27 +1,23 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Post } from '@nestjs/common';
+import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { AuthService } from '@src/modules/auth/auth.service';
+import { AuthRegisterDto, AuthLoginDto } from '@src/modules/auth/dtos';
+import { AuthLoginVo } from '@src/modules/auth/vo/auth-login.vo';
 
 @Controller('auth')
+@ApiTags('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @HttpCode(HttpStatus.OK)
-  register(
-    @Body() registerDto: { email: string; password: string; name: string },
-  ) {
-    const { email, password, name } = registerDto;
-    const user = this.authService.register({ email, password, name });
-
-    return user;
+  @ApiCreatedResponse()
+  register(@Body() { email, password, name }: AuthRegisterDto) {
+    return this.authService.register({ email, password, name });
   }
 
-  @HttpCode(HttpStatus.OK)
   @Post('login')
-  login(@Body() loginDto: Record<string, any>) {
-    const { email, password } = loginDto;
-    const user = this.authService.login(email, password);
-
-    return user;
+  @ApiOkResponse()
+  login(@Body() { email, password }: AuthLoginDto): Promise<AuthLoginVo> {
+    return this.authService.login({ email, password });
   }
 }
