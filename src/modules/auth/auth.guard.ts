@@ -4,8 +4,8 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { config } from '@src/config';
 import {
   setCredentialToRequest,
   TCredential,
@@ -15,7 +15,10 @@ import { Observable } from 'rxjs';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly configs: ConfigService,
+  ) {}
 
   canActivate(
     context: ExecutionContext,
@@ -27,7 +30,7 @@ export class AuthGuard implements CanActivate {
 
     try {
       const decoded: TCredential = this.jwtService.verify(token, {
-        secret: config.JWT.ACCESS.SECRETKEY,
+        secret: this.configs.get<string>('JWT_ACCESS_SECRETKEY'),
       });
 
       setCredentialToRequest(request, decoded);

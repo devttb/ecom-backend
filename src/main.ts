@@ -3,10 +3,13 @@ import { AppModule } from '@src/app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
 import { PrismaClientExceptionFilter } from '@src/libs/prisma/prisma-client-exception/prisma-client-exception.filter';
+import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.useGlobalPipes(new ValidationPipe());
+  const configService = app.get(ConfigService);
+  const port = configService.get<number>('PORT') || 3000;
 
   const config = new DocumentBuilder()
     .setTitle('Ecom-backend apis')
@@ -19,7 +22,7 @@ async function bootstrap() {
   const { httpAdapter } = app.get(HttpAdapterHost);
   app.useGlobalFilters(new PrismaClientExceptionFilter(httpAdapter));
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(port);
 }
 // eslint-disable-next-line @typescript-eslint/no-floating-promises
 bootstrap();

@@ -10,7 +10,8 @@ import { PasswordHelper } from '@src/common/utils/password-helper';
 import { AuthRegisterDto, AuthLoginDto } from '@src/modules/auth/dtos';
 import { CredentialRepository } from '@src/modules/credential/credential.repository';
 import { AuthLoginVo, AuthRegisterVo } from '@src/modules/auth/vo';
-import { config } from '@src/config';
+import { MailService } from '@src/modules/mail/mail.service';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthService {
@@ -19,6 +20,8 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly crendentialRepo: CredentialRepository,
     private readonly userRepo: UserRepository,
+    private readonly mailService: MailService,
+    private readonly configs: ConfigService,
   ) {}
 
   async register(registerDto: AuthRegisterDto): Promise<AuthRegisterVo> {
@@ -27,6 +30,7 @@ export class AuthService {
     return this.prismaService.$transaction(async (prisma) => {
       const userExisted = await this.userRepo.findUnique(prisma, { email });
 
+      // check user
       if (userExisted) throw new ConflictException('Email is already existed!');
 
       const user = await this.userRepo.create(prisma, { email, name });
@@ -35,6 +39,10 @@ export class AuthService {
         password,
         userId: user.id,
       });
+
+      // send mail verify
+      const token = this.generateVerifyToken({ email });
+      await this.mailService.sendMailVerify(email, token);
 
       const authRegisterVo = new AuthRegisterVo('Success');
       return authRegisterVo;
@@ -60,6 +68,7 @@ export class AuthService {
       if (!passwordValid)
         throw new UnauthorizedException('Email or password incorrect!');
 
+      // generate tokens
       const accessToken = this.generateAccessToken(payload);
       const refreshToken = this.generateRefreshToken(payload);
       const authLoginVo = new AuthLoginVo(accessToken, refreshToken);
@@ -70,15 +79,22 @@ export class AuthService {
 
   generateAccessToken(payload: Buffer | object): string {
     return this.jwtService.sign(payload, {
-      secret: config.JWT.ACCESS.SECRETKEY,
-      expiresIn: config.JWT.ACCESS.EXPIRESIN,
+      secret: this.configs.get<string>('JWT_ACCESS_KEY'),
+      expiresIn: this.configs.get<string>('JWT_ACCESS_EXPIRESIN'),
     });
   }
 
   generateRefreshToken(payload: Buffer | object): string {
     return this.jwtService.sign(payload, {
-      secret: config.JWT.REFESH.SECRETKEY,
-      expiresIn: config.JWT.REFESH.EXPIRESIN,
+      secret: this.configs.get<string>('JWT_REFESH_KEY'),
+      expiresIn: this.configs.get<string>('JWT_REFESH_EXPIRESIN'),
+    });
+  }
+
+  generateVerifyToken(payload: Buffer | object): string {
+    return this.jwtService.sign(payload, {
+      secret: this.configs.get<string>('JWT_VERIFY_KEY'),
+      expiresIn: this.configs.get<string>('JWT_VERIFY_EXPIRESIN'),
     });
   }
 }
